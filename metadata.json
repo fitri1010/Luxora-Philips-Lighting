@@ -1,0 +1,6 @@
+{
+  "name": "LUXORA",
+  "description": "LUXORA - Lighting Sales, POS, Financial & Sharia Analytics System",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
