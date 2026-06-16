@@ -1,1 +1,73 @@
 @import "tailwindcss";
+
+/*
+ * Custom design tokens.
+ * Tailwind v4 reads these from @theme (the v3 tailwind.config.js theme.extend
+ * equivalent). The dashboard relies heavily on intermediate color shades and
+ * extra-small font sizes that are not part of the default palette.
+ */
+@theme {
+  /* Extra-small font sizes (below the default text-xs / 0.75rem) */
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-2xs--line-height: 1rem;
+  --text-3xs: 0.625rem; /* 10px */
+  --text-3xs--line-height: 0.875rem;
+  --text-4xs: 0.5625rem; /* 9px */
+  --text-4xs--line-height: 0.75rem;
+
+  /* Intermediate slate shades */
+  --color-slate-150: #e9eef4;
+  --color-slate-250: #d8e0ea;
+  --color-slate-350: #aab8c9;
+  --color-slate-450: #7c8a9c;
+  --color-slate-550: #556377;
+  --color-slate-650: #3e4a60;
+  --color-slate-705: #313f53;
+  --color-slate-750: #283449;
+  --color-slate-755: #26324a;
+  --color-slate-850: #172032;
+  --color-slate-855: #161e30;
+  --color-slate-905: #0b1220;
+
+  /* Intermediate emerald shades */
+  --color-emerald-250: #8becc4;
+  --color-emerald-350: #4cd9a6;
+  --color-emerald-450: #1fc695;
+  --color-emerald-550: #0ba877;
+  --color-emerald-650: #057060;
+
+  /* Intermediate indigo shade */
+  --color-indigo-650: #483ed9;
+
+  /* Intermediate red shades */
+  --color-red-150: #fed7d7;
+  --color-red-550: #e63636;
+  --color-red-650: #cb2020;
+
+  /* Intermediate rose shades */
+  --color-rose-350: #fc8b99;
+  --color-rose-450: #f85871;
+
+  /* Intermediate amber shades */
+  --color-amber-350: #fbca3a;
+  --color-amber-550: #e88c0a;
+  --color-amber-650: #c66308;
+  --color-amber-805: #8a3c0d;
+
+  /* Intermediate teal shade */
+  --color-teal-350: #46e0ca;
+
+  /* Custom animation used across panels */
+  --animate-fade-in: fade-in 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -3,7 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useField, useResetData } from "./data/DataStore";
+import { usePersistentState } from "./hooks/usePersistentState";
+import { useAuth } from "./auth/AuthContext";
+import { can, canAccessMenu } from "./auth/permissions";
+import { auditOrders } from "./utils/shariaAudit";
 import {
   Sparkles,
   MessageSquare,
@@ -38,19 +43,12 @@ import {
   LineChart,
   UserSquare,
   DollarSign,
-  Package
+  Package,
+  Trash2
 } from "lucide-react";
 
-// Types and Seed Data
-import { MarketplaceOrder, POSTransaction, InventoryItem, RiskItem, ZakatRecord, AnomalyLog } from "./types";
-import {
-  initialMarketplaceOrders,
-  initialPOSTransactions,
-  initialInventoryItems,
-  initialRiskItems,
-  initialZakatHistory,
-  initialRecommendations
-} from "./data/seedData";
+// Types
+import { MarketplaceOrder, POSTransaction, InventoryItem, RiskItem, ZakatRecord, AnomalyLog, BusinessRecommendation } from "./types";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -61,40 +59,51 @@ import InteractiveCharts from "./components/InteractiveCharts";
 import POSSimulator from "./components/POSSimulator";
 import IndonesiaMap from "./components/IndonesiaMap";
 import ShariaRadar from "./components/ShariaRadar";
+import ShariaAudit from "./components/ShariaAudit";
+import ZakatBanner from "./components/ZakatBanner";
+import OrderManager from "./components/OrderManager";
 import InventoryManager from "./components/InventoryManager";
 import RiskCenter from "./components/RiskCenter";
 import ReportCenter from "./components/ReportCenter";
+import ShopMembers from "./components/ShopMembers";
 import AICopilot from "./components/AICopilot";
 
 export default function App() {
+  // Authenticated user + logout (gated by AuthProvider in main.tsx)
+  const { user, logout } = useAuth();
+  const resetData = useResetData();
+  const role = user?.role;
+
   // --- MASTER STATE SYSTEM ---
-  const [orders, setOrders] = useState<MarketplaceOrder[]>(initialMarketplaceOrders);
-  const [posHistory, setPosHistory] = useState<POSTransaction[]>(initialPOSTransactions);
-  const [inventory, setInventory] = useState<InventoryItem[]>(initialInventoryItems);
-  const [risks, setRisks] = useState<RiskItem[]>(initialRiskItems);
-  const [zakatHistory, setZakatHistory] = useState<ZakatRecord[]>(initialZakatHistory);
-  
+  // New accounts start empty; data is added via input/import or seeded per-account.
+  const [orders, setOrders] = useField<MarketplaceOrder[]>("orders", []);
+  const [posHistory, setPosHistory] = useField<POSTransaction[]>("pos", []);
+  const [inventory, setInventory] = useField<InventoryItem[]>("inventory", []);
+  const [risks, setRisks] = useField<RiskItem[]>("risks", []);
+  const [zakatHistory, setZakatHistory] = useField<ZakatRecord[]>("zakat", []);
+
   // Recommendations state
-  const [recommendations, setRecommendations] = useState(initialRecommendations);
+  const [recommendations, setRecommendations] = useField<BusinessRecommendation[]>("recommendations", []);
 
   // Active filters from Header component
   const [selectedProvince, setSelectedProvince] = useState("All Provinces");
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [selectedStatus, setSelectedStatus] = useState("All Statuses");
 
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useField("darkMode", false);
   const [searchTerm, setSearchTerm] = useState("");
 
   // ENTERPRISE SIDEBAR NAVIGATION STATE
-  const [activeMenu, setActiveMenu] = useState("dashboard");
+  // Remember the last open menu across reloads (UI nav state → localStorage, per browser)
+  const [activeMenu, setActiveMenu] = usePersistentState("activeMenu", "dashboard");
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   // SETTINGS DYNAMIC VALUES
-  const [companyName, setCompanyName] = useState("LUXORA Lighting Indo");
-  const [shopeeStore, setShopeeStore] = useState("luxora.official");
-  const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(true);
-  const [aiModelTemp, setAiModelTemp] = useState(0.4);
+  const [companyName, setCompanyName] = useField("companyName", "LUXORA Lighting Indo");
+  const [shopeeStore, setShopeeStore] = useField("shopeeStore", "luxora.official");
+  const [isNotificationsEnabled, setIsNotificationsEnabled] = useField("notificationsEnabled", true);
+  const [aiModelTemp, setAiModelTemp] = useField("aiModelTemp", 0.4);
   const [isConfigSynced, setIsConfigSynced] = useState(false);
 
   // OPERATIONAL BUDGET SLIDERS
@@ -102,11 +111,7 @@ export default function App() {
 
   // AI INSTANT PREDICTION GENERATOR
   const [isGeneratingInsight, setIsGeneratingInsight] = useState(false);
-  const [aiInsights, setAiInsights] = useState([
-    "Lampu LED 18 Watt menjadi produk dengan kontribusi laba tertinggi bulan ini. Namun tingkat return meningkat 6% di wilayah Jawa Timur akibat kerusakan saat pengiriman.",
-    "Shopee Ads ROI saat ini stabil di angka 4.5x. Mengurangi budget bidding kata kunci berkonversi rendah dapat menghemat biaya OPEX hingga IDR 350.000.",
-    "Kewajiban Zakat Perniagaan (Zakat Mal) terhitung sebesar IDR 1.250.000 berdasarkan total harta lancar perniagaan (Kas Likuid + Persediaan Barang Dagang)."
-  ]);
+  const [aiInsights, setAiInsights] = useField<string[]>("aiInsights", []);
 
   const provinces = [
     "All Provinces", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "DI Yogyakarta",
@@ -122,28 +127,7 @@ export default function App() {
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
 
   // Anomaly logs state
-  const [anomalies, setAnomalies] = useState<AnomalyLog[]>([
-    {
-      id: "ANM-001",
-      type: "Double Order",
-      title: "Double Order Terdeteksi (Muhammad Rizky)",
-      description: "Pelanggan melakukan order berulang untuk 'Lampu Kubah Slim' (LMP-KUB-LED-01) senilai IDR 650.000 dalam selang 5 menit menggunakan alamat yang identik. Ada rasi risiko ketidaksengajaan klik.",
-      severity: "high",
-      status: "Flagged",
-      date: "2026-06-14",
-      metadata: { customer: "Muhammad Rizky", sku: "LMP-KUB-LED-01" }
-    },
-    {
-      id: "ANM-002",
-      type: "Cost Spike",
-      title: "Shopee Ads Cost Spike",
-      description: "Biaya promosi kata kunci harian Shopee melambung melampaui rata-rata harian normal (+IDR 350.000) dibanding minggu lalu.",
-      severity: "medium",
-      status: "Flagged",
-      date: "2026-06-13",
-      metadata: { diff_amount: "350000" }
-    }
-  ]);
+  const [anomalies, setAnomalies] = useField<AnomalyLog[]>("anomalies", []);
 
   // --- INTERACTION HANDLERS ---
   
@@ -167,6 +151,11 @@ export default function App() {
     );
   };
 
+  // Add a new product (Master SKU) to inventory
+  const handleAddProduct = (item: InventoryItem) => {
+    setInventory((prev) => (prev.some((i) => i.sku === item.sku) ? prev : [...prev, item]));
+  };
+
   // Inventory PO restock handler
   const handleAddNewStock = (sku: string, qty: number) => {
     setInventory((prev) =>
@@ -186,6 +175,86 @@ export default function App() {
   // Zakat payoff handler
   const handleAddNewZakatPayment = (newRec: ZakatRecord) => {
     setZakatHistory((prev) => [newRec, ...prev]);
+  };
+
+  // Marketplace order input/import handlers (F-01, PB-TRX-005)
+  const handleAddOrders = (newOrders: MarketplaceOrder[]) => {
+    setOrders((prev) => {
+      const existing = new Set(prev.map((o) => o.order_id));
+      const fresh = newOrders.filter((o) => !existing.has(o.order_id)); // dedup (BR-TRX-005)
+      return [...fresh, ...prev];
+    });
+  };
+
+  const handleDeleteOrder = (orderId: string) => {
+    setOrders((prev) => prev.filter((o) => o.order_id !== orderId));
+  };
+
+  const handleUpdateOrderStatus = (orderId: string, status: MarketplaceOrder["order_status"]) => {
+    setOrders((prev) => prev.map((o) => (o.order_id === orderId ? { ...o, order_status: status } : o)));
+
+    // BR-STK-003: a Returned order enters the inspection queue (layak jual vs write-off).
+    if (status === "Returned") {
+      const ord = orders.find((o) => o.order_id === orderId);
+      if (ord) {
+        setRisks((prev) => {
+          if (prev.some((r) => r.order_id === orderId && r.inspection_status === "PENDING_INSPECTION")) return prev;
+          const newRisk: RiskItem = {
+            id: `RSK-${Date.now().toString(36).toUpperCase()}`,
+            order_id: orderId,
+            product_name: ord.product_name,
+            sku: ord.sku,
+            qty: ord.qty,
+            return_status: "Pending",
+            return_reason: "Menunggu inspeksi kondisi barang",
+            damaged_goods: false,
+            lost_package: false,
+            return_loss: 0,
+            date: new Date().toISOString().split("T")[0],
+            inspection_status: "PENDING_INSPECTION"
+          };
+          return [newRisk, ...prev];
+        });
+      }
+    }
+  };
+
+  // Resolve a return inspection (BR-STK-003): restock layak-jual or write-off rugi.
+  const handleResolveReturn = (riskId: string, decision: "restock" | "writeoff") => {
+    const risk = risks.find((r) => r.id === riskId);
+    if (!risk) return;
+    const invItem = inventory.find((i) => i.sku === risk.sku);
+    const ord = orders.find((o) => o.order_id === risk.order_id);
+    const qty = risk.qty || ord?.qty || 1;
+    const logistics = (ord?.shipping_forwarded_to_courier ?? 20000) + (ord?.handling_fee ?? 2000);
+    const cogs = invItem ? invItem.cost_price * qty : 0;
+
+    if (decision === "restock") {
+      if (invItem) {
+        setInventory((prev) =>
+          prev.map((i) =>
+            i.sku === risk.sku
+              ? { ...i, stock_return: i.stock_return + qty, stock_ending: i.stock_ending + qty }
+              : i
+          )
+        );
+      }
+      setRisks((prev) =>
+        prev.map((r) =>
+          r.id === riskId
+            ? { ...r, inspection_status: "RESTOCKED", return_status: "Approved", damaged_goods: false, return_loss: logistics, return_reason: "Barang layak jual, dikembalikan ke stok (rugi logistik)" }
+            : r
+        )
+      );
+    } else {
+      setRisks((prev) =>
+        prev.map((r) =>
+          r.id === riskId
+            ? { ...r, inspection_status: "DAMAGED_WRITE_OFF", return_status: "Approved", damaged_goods: true, return_loss: logistics + cogs, return_reason: "Barang rusak / tidak layak jual (write-off)" }
+            : r
+        )
+      );
+    }
   };
 
   // Resolve double-order duplicate or cost anomalies
@@ -312,6 +381,69 @@ export default function App() {
     };
   }, [orders, posHistory, inventory, risks, selectedProvince, selectedCategory, selectedStatus, sliderPackingCost]);
 
+  // --- SHARIA COMPLIANCE SCORE (computed from real operational data) ---
+  // 7 muamalah dimensions (ref: types.ts ShariaMetrics, BUSINESS_RULES §6).
+  const shariaCompliance = useMemo(() => {
+    const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+    // Order outcomes
+    const completed = orders.filter((o) => o.order_status === "Completed" || o.order_status === "Delivered").length;
+    const returned = orders.filter((o) => o.order_status === "Returned").length;
+    const cancelled = orders.filter((o) => o.order_status === "Cancelled").length;
+    const finalized = completed + returned + cancelled;
+
+    // Open anomalies (recording integrity)
+    const flaggedCostSpikes = anomalies.filter((a) => a.status === "Flagged" && a.type === "Cost Spike").length;
+    const flaggedDoubles = anomalies.filter((a) => a.status === "Flagged" && a.type === "Double Order").length;
+
+    // Customer harm (damaged / lost packages)
+    const damaged = risks.filter((r) => r.damaged_goods).length;
+    const lost = risks.filter((r) => r.lost_package).length;
+
+    // Fulfillment uncertainty
+    const lowStock = inventory.filter((i) => i.stock_ending <= i.minimum_stock).length;
+
+    // Pricing fairness — average contribution margin (selling assumed 1.95× cost, as elsewhere)
+    const margins = inventory.map((i) => {
+      const sell = i.cost_price * 1.95;
+      return ((sell - i.cost_price) / sell) * 100;
+    });
+    const avgMargin = margins.length ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
+
+    // Riba-free payment share (all supported gateways are interest-free)
+    const ribaFreeMethods = ["QRIS", "OVO", "GoPay", "DANA", "ShopeePay", "Transfer", "Cash"];
+    const ribaFreeCount = posHistory.filter((t) => ribaFreeMethods.includes(t.payment_method)).length;
+    const ribaFreeShare = posHistory.length ? ribaFreeCount / posHistory.length : 1;
+
+    // Zakat timeliness — days since most recent paid record
+    const paidZakat = zakatHistory.filter((z) => z.payment_status === "Paid");
+    const lastZakatDays = paidZakat.length
+      ? Math.min(...paidZakat.map((z) => Math.floor((Date.now() - new Date(z.date).getTime()) / 86_400_000)))
+      : Infinity;
+
+    const transparency = clamp(100 - flaggedCostSpikes * 12 - flaggedDoubles * 5);
+    const amanah = clamp(finalized ? (completed / finalized) * 100 : 100);
+    const keadilan = clamp(100 - Math.max(0, avgMargin - 50) * 2);
+    // Real per-transaction audit (F-20/F-21): gharar = hidden fees, zalim = shipping overcharge
+    const audit = auditOrders(orders);
+    const bebas_gharar = clamp(audit.total ? (1 - audit.gharar / audit.total) * 100 : 100);
+    const bebas_zalim = clamp(audit.total ? (1 - audit.zalim / audit.total) * 100 : 100);
+    void lowStock; void damaged; void lost; void cancelled; // retained for other potential use
+    const bebas_riba = clamp(ribaFreeShare * 100);
+    const kepatuhan_zakat = clamp(
+      lastZakatDays <= 365 ? 100 : lastZakatDays <= 400 ? 85 : paidZakat.length ? 65 : 45
+    );
+
+    const metrics = { transparency, amanah, keadilan, bebas_gharar, bebas_zalim, bebas_riba, kepatuhan_zakat };
+    const score = clamp(
+      (transparency + amanah + keadilan + bebas_gharar + bebas_zalim + bebas_riba + kepatuhan_zakat) / 7
+    );
+    const badge =
+      score >= 90 ? "Sangat Patuh" : score >= 75 ? "Patuh" : score >= 60 ? "Cukup Patuh" : "Perlu Perbaikan";
+
+    return { metrics, score, badge };
+  }, [orders, posHistory, inventory, risks, zakatHistory, anomalies]);
+
   // Props contextual data object for AI and Reports
   const aiDataContext = useMemo(() => {
     return {
@@ -325,10 +457,10 @@ export default function App() {
       lowStockSkus: inventory
         .filter((item) => item.stock_ending <= item.minimum_stock)
         .map((i) => i.sku),
-      shariaScore: 92,
-      shariaBadge: "Sangat Patuh"
+      shariaScore: shariaCompliance.score,
+      shariaBadge: shariaCompliance.badge
     };
-  }, [activeFinancials, posHistory, anomalies, inventory]);
+  }, [activeFinancials, posHistory, anomalies, inventory, shariaCompliance]);
 
   const historicalHistoryTrend = useMemo(() => {
     return [
@@ -403,15 +535,15 @@ export default function App() {
       orderCount: activeFinancials.filteredOrdersList.length + posHistory.length,
       grossProfit: activeFinancials.grossProfit,
       netProfit: activeFinancials.netProfit,
-      cashBalance: activeFinancials.netProfit + 50000000,
+      cashBalance: activeFinancials.netProfit,
       returnRate: returnVal,
       cancelRate: 1.8,
       inventoryTurnover: 0.85,
       adsRoi: 4.5,
-      shariaScore: 92,
-      shariaBadge: "Sangat Patuh"
+      shariaScore: shariaCompliance.score,
+      shariaBadge: shariaCompliance.badge
     };
-  }, [activeFinancials, posHistory]);
+  }, [activeFinancials, posHistory, shariaCompliance]);
 
   const lowStockCount = useMemo(() => {
     return inventory.filter(item => item.stock_ending <= item.minimum_stock).length;
@@ -420,6 +552,13 @@ export default function App() {
   const unresolvedRisks = useMemo(() => {
     return anomalies.filter(anom => anom.status === "Flagged").length;
   }, [anomalies]);
+
+  // RBAC guard: if the role cannot access the active menu, fall back to dashboard.
+  useEffect(() => {
+    if (!canAccessMenu(role, activeMenu)) {
+      setActiveMenu("dashboard");
+    }
+  }, [role, activeMenu]);
 
   // Master formatters
   const formatIDR = (val: number) => {
@@ -457,6 +596,8 @@ export default function App() {
         return ["Dashboard", "LUXORA AI Insights"];
       case "reports":
         return ["Dashboard", "Reports Center"];
+      case "users":
+        return ["Dashboard", "Manajemen Toko"];
       case "settings":
         return ["Dashboard", "Settings"];
       default:
@@ -477,6 +618,9 @@ export default function App() {
         setIsMobileOpen={setIsMobileOpen}
         lowStockCount={lowStockCount}
         unresolvedRisks={unresolvedRisks}
+        role={role}
+        userName={user?.name}
+        userEmail={user?.email}
       />
 
       {/* Main Container spacing adjusting dynamically on desktop */}
@@ -500,6 +644,9 @@ export default function App() {
             provinces={provinces}
             categories={categories}
             onMenuToggle={() => setIsMobileOpen(true)}
+            userName={user?.name}
+            userRole={user?.role}
+            onLogout={logout}
           />
 
           {/* BREADCRUMB PATHWAY BAR */}
@@ -521,11 +668,21 @@ export default function App() {
             {/* 1. DASHBOARD OVERVIEW */}
             {activeMenu === "dashboard" && (
               <div className="space-y-6 animate-fade-in">
-                
-                {/* Core Executive Metrics */}
-                <ExecutiveKPI metrics={kpiMetrics} />
 
-                {/* Grid layout for Health status checklist + real-time AI prompt feedback */}
+                {/* Zakat status banner (PRD F-25) — finance roles only */}
+                {can(role, "finance:view") && (
+                  <ZakatBanner
+                    inventoryValue={activeFinancials.totalInventoryAssetValue}
+                    defaultCash={activeFinancials.netProfit}
+                    onGoToZakat={() => setActiveMenu("sharia")}
+                  />
+                )}
+
+                {/* Core Executive Metrics */}
+                <ExecutiveKPI metrics={kpiMetrics} hideFinancials={!can(role, "finance:view")} />
+
+                {/* Finance/Sharia panels — hidden from roles without finance access (Staff) */}
+                {can(role, "finance:view") && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   
                   {/* Business Health Meter Box (5 Columns) */}
@@ -546,10 +703,10 @@ export default function App() {
                         <div className="relative w-24 h-24 flex items-center justify-center flex-shrink-0">
                           <svg className="absolute w-full h-full transform -rotate-90">
                             <circle cx="48" cy="48" r="42" className="stroke-slate-100 dark:stroke-slate-750 fill-none" strokeWidth="8" />
-                            <circle cx="48" cy="48" r="42" className="stroke-[#009966] fill-none" strokeWidth="8" strokeDasharray="264" strokeDashoffset="16" strokeLinecap="round" />
+                            <circle cx="48" cy="48" r="42" className="stroke-[#009966] fill-none" strokeWidth="8" strokeDasharray="264" strokeDashoffset={264 - (264 * shariaCompliance.score) / 100} strokeLinecap="round" />
                           </svg>
                           <div className="text-center">
-                            <span className="text-2xl font-black text-slate-800 dark:text-white leading-none">94%</span>
+                            <span className="text-2xl font-black text-slate-800 dark:text-white leading-none">{shariaCompliance.score}%</span>
                             <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">BARAKAH</span>
                           </div>
                         </div>
@@ -568,25 +725,25 @@ export default function App() {
                           <span className="text-slate-500 font-bold flex items-center gap-1.5">
                             <Check className="w-3.5 h-3.5 text-emerald-600" /> Bebas Riba (Safe Local QRIS Gateways)
                           </span>
-                          <span className="font-black text-emerald-600">Patuh (100)</span>
+                          <span className="font-black text-emerald-600">{shariaCompliance.metrics.bebas_riba}/100</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-bold flex items-center gap-1.5">
-                            <Check className="w-3.5 h-3.5 text-emerald-600" /> Amanah Transaksi & Zero Gharar
+                            <Check className="w-3.5 h-3.5 text-emerald-600" /> Amanah Transaksi (Fulfillment Rate)
                           </span>
-                          <span className="font-black text-emerald-600">Patuh (95)</span>
+                          <span className="font-black text-emerald-600">{shariaCompliance.metrics.amanah}/100</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-bold flex items-center gap-1.5">
-                            <Check className="w-3.5 h-3.5 text-emerald-600" /> Persediaan Stok vs Reorder Level
+                            <Check className="w-3.5 h-3.5 text-emerald-600" /> Bebas Gharar (Stok & Kepastian)
                           </span>
-                          <span className="font-black text-amber-500">Aman (92)</span>
+                          <span className="font-black text-amber-500">{shariaCompliance.metrics.bebas_gharar}/100</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-bold flex items-center gap-1.5">
-                            <Check className="w-3.5 h-3.5 text-rose-500" /> Risiko Retur Logistik Jatim
+                            <Check className="w-3.5 h-3.5 text-rose-500" /> Bebas Zalim (Risiko Retur/Rusak)
                           </span>
-                          <span className="font-black text-rose-500">Menengah (91)</span>
+                          <span className="font-black text-rose-500">{shariaCompliance.metrics.bebas_zalim}/100</span>
                         </div>
                       </div>
                     </div>
@@ -602,6 +759,7 @@ export default function App() {
                   </div>
 
                 </div>
+                )}
 
                 {/* QUICK NAVIGATION CARDS GRID (Apen modul related) */}
                 <div className="space-y-3">
@@ -787,7 +945,17 @@ export default function App() {
             {/* 3. MARKETPLACE ANALYTICS */}
             {activeMenu === "marketplace" && (
               <div className="space-y-6 animate-fade-in">
-                
+
+                {/* Transaction input / import (F-01, PB-TRX-005) */}
+                <OrderManager
+                  orders={orders}
+                  inventoryItems={inventory}
+                  onAddOrders={handleAddOrders}
+                  onDeleteOrder={handleDeleteOrder}
+                  onUpdateStatus={handleUpdateOrderStatus}
+                  canWrite={can(role, "transactions:write")}
+                />
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                   <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border dark:border-slate-800 shadow-sm">
                     <span className="text-slate-450 dark:text-slate-550 text-[10px] font-black uppercase tracking-wider block">Shopee Net Profits</span>
@@ -996,6 +1164,8 @@ export default function App() {
                 <InventoryManager
                   inventoryItems={inventory}
                   onAddStock={handleAddNewStock}
+                  onAddProduct={handleAddProduct}
+                  canWrite={can(role, "stock:write")}
                 />
               </div>
             )}
@@ -1092,6 +1262,8 @@ export default function App() {
                   riskItems={risks}
                   onResolveAnomaly={handleResolveAnomaly}
                   onDismissAnomaly={handleDismissAnomaly}
+                  onResolveReturn={handleResolveReturn}
+                  canResolve={can(role, "risk:resolve")}
                 />
               </div>
             )}
@@ -1118,22 +1290,16 @@ export default function App() {
             {activeMenu === "sharia" && (
               <div className="space-y-6 animate-fade-in">
                 <ShariaRadar
-                  shariaMetrics={{
-                    transparency: 95,
-                    amanah: 92,
-                    keadilan: 90,
-                    bebas_gharar: 95,
-                    bebas_zalim: 94,
-                    bebas_riba: 100,
-                    kepatuhan_zakat: 90
-                  }}
-                  complianceScore={94}
-                  complianceBadge="Sangat Patuh"
-                  cashBalance={activeFinancials.netProfit + 50000000}
+                  shariaMetrics={shariaCompliance.metrics}
+                  complianceScore={shariaCompliance.score}
+                  complianceBadge={shariaCompliance.badge}
+                  cashBalance={activeFinancials.netProfit}
                   inventoryValue={activeFinancials.totalInventoryAssetValue}
                   zakatRecords={zakatHistory}
                   onPayZakat={handleAddNewZakatPayment}
+                  canPay={can(role, "zakat:pay")}
                 />
+                <ShariaAudit orders={orders} />
               </div>
             )}
 
@@ -1234,6 +1400,9 @@ export default function App() {
               </div>
             )}
 
+            {/* SHOP / USER MANAGEMENT (Owner only) */}
+            {activeMenu === "users" && <ShopMembers />}
+
             {/* 13. SETTINGS */}
             {activeMenu === "settings" && (
               <div className="space-y-6 animate-fade-in">
@@ -1264,6 +1433,24 @@ export default function App() {
                             onChange={(e) => setShopeeStore(e.target.value)}
                             className="p-2.5 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border dark:border-slate-700 rounded-xl font-mono"
                           />
+                        </div>
+
+                        {/* Shop join code — share with Staff/Accountant to join this shop */}
+                        <div className="flex flex-col gap-1">
+                          <label className="font-extrabold text-slate-500">Kode Toko (untuk undang Staff/Accountant)</label>
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 p-2.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300/50 rounded-xl font-mono font-black tracking-widest text-center">
+                              {user?.shopJoinCode || "—"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => { if (user?.shopJoinCode) navigator.clipboard?.writeText(user.shopJoinCode); }}
+                              className="px-3 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 text-3xs font-black uppercase rounded-xl cursor-pointer"
+                            >
+                              Salin
+                            </button>
+                          </div>
+                          <span className="text-3xs text-slate-400">Bagikan kode ini agar tim bergabung ke toko yang sama.</span>
                         </div>
                       </div>
                     </div>
@@ -1367,6 +1554,33 @@ export default function App() {
                       </div>
                     </div>
 
+                  </div>
+
+                  {/* Data Management — reset persisted localStorage data */}
+                  <div className="mt-8 border-t dark:border-slate-750 pt-6">
+                    <h4 className="text-2xs font-extrabold uppercase text-rose-500">Manajemen Data</h4>
+                    <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-rose-300/60 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/10">
+                      <div>
+                        <span className="block text-2xs font-black text-slate-800 dark:text-slate-100">Reset Seluruh Data ke Awal</span>
+                        <span className="block text-3xs text-slate-450 font-medium mt-0.5 max-w-md leading-relaxed">
+                          Menghapus semua data yang tersimpan di browser ini (transaksi POS, stok, riwayat zakat, anomali, pengaturan) dan mengembalikan data contoh bawaan. Tindakan ini tidak dapat dibatalkan.
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const confirmed = window.confirm(
+                            "Yakin ingin menghapus SEMUA data dan kembali ke data contoh awal? Tindakan ini tidak dapat dibatalkan."
+                          );
+                          if (confirmed) {
+                            resetData().finally(() => window.location.reload());
+                          }
+                        }}
+                        className="shrink-0 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 font-extrabold text-2xs uppercase text-white rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Reset Data</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-8 pt-4 border-t dark:border-slate-750 flex justify-end gap-3.5">

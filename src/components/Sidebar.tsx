@@ -21,8 +21,10 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Lightbulb
+  Lightbulb,
+  Users
 } from "lucide-react";
+import { canAccessMenu, normalizeRole, ROLE_LABELS } from "../auth/permissions";
 
 interface SidebarProps {
   activeMenu: string;
@@ -33,6 +35,9 @@ interface SidebarProps {
   setIsMobileOpen: (open: boolean) => void;
   lowStockCount: number;
   unresolvedRisks: number;
+  role?: string;
+  userName?: string;
+  userEmail?: string;
 }
 
 export default function Sidebar({
@@ -43,7 +48,10 @@ export default function Sidebar({
   isMobileOpen,
   setIsMobileOpen,
   lowStockCount,
-  unresolvedRisks
+  unresolvedRisks,
+  role,
+  userName,
+  userEmail
 }: SidebarProps) {
   const menuItems = [
     {
@@ -124,12 +132,21 @@ export default function Sidebar({
       category: "REPORTS"
     },
     {
+      id: "users",
+      label: "Manajemen Toko",
+      icon: <Users className="w-5 h-5" />,
+      category: "SYSTEM"
+    },
+    {
       id: "settings",
       label: "Settings",
       icon: <Sliders className="w-5 h-5" />,
       category: "SYSTEM"
     }
   ];
+
+  // Filter menu by the current user's role (RBAC)
+  const visibleItems = menuItems.filter((item) => canAccessMenu(role, item.id));
 
   // Regroup items by category
   const categories = ["CORE", "PERFORMANCE", "FINANCE", "OPERATIONS", "INTELLIGENCE", "COMPLIANCE", "REPORTS", "SYSTEM"];
@@ -171,7 +188,7 @@ export default function Sidebar({
       {/* Navigation Links Scrollable list */}
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-5 custom-scrollbar">
         {categories.map((cat) => {
-          const catItems = menuItems.filter((item) => item.category === cat);
+          const catItems = visibleItems.filter((item) => item.category === cat);
           if (catItems.length === 0) return null;
 
           return (
@@ -245,15 +262,15 @@ export default function Sidebar({
       <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
         <div className="flex items-center space-x-3 overflow-hidden">
           <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-500 to-amber-500 flex items-center justify-center font-bold text-white shadow-inner flex-shrink-0">
-            A
+            {(userName || "L").charAt(0).toUpperCase()}
           </div>
           {!isCollapsed && (
             <div className="overflow-hidden">
               <span className="block text-xs font-extrabold text-slate-800 dark:text-white leading-none whitespace-nowrap truncate">
-                Admin Safitri
+                {userName || "Pengguna LUXORA"}
               </span>
-              <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-1 whitespace-nowrap truncate">
-                2310102036.safitri@student
+              <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 whitespace-nowrap truncate">
+                {ROLE_LABELS[normalizeRole(role)]}{userEmail ? ` · ${userEmail}` : ""}
               </span>
             </div>
           )}

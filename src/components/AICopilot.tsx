@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { MessageSquare, Send, Sparkles, X, CornerDownLeft, Award, HelpCircle, Bot } from "lucide-react";
 import { ChatMessage } from "../types";
+import { authFetch } from "../auth/AuthContext";
 
 interface AICopilotProps {
   dataContext: any;
@@ -56,7 +57,7 @@ export default function AICopilot({ dataContext, isOpen, onClose }: AICopilotPro
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/copilot", {
+      const response = await authFetch("/api/copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

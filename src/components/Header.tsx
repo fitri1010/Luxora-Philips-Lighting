@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { Search, Calendar, Globe, Star, ShoppingBag, Sun, Moon, Info, Lightbulb, TrendingUp, Menu } from "lucide-react";
+import { Search, Calendar, Globe, Star, ShoppingBag, Sun, Moon, Info, Lightbulb, TrendingUp, Menu, LogOut } from "lucide-react";
 
 interface HeaderProps {
   darkMode: boolean;
@@ -20,6 +20,9 @@ interface HeaderProps {
   provinces: string[];
   categories: string[];
   onMenuToggle?: () => void;
+  userName?: string;
+  userRole?: string;
+  onLogout?: () => void;
 }
 
 export default function Header({
@@ -35,8 +38,20 @@ export default function Header({
   setSearchTerm,
   provinces,
   categories,
-  onMenuToggle
+  onMenuToggle,
+  userName,
+  userRole,
+  onLogout
 }: HeaderProps) {
+  const displayName = userName || "Pengguna LUXORA";
+  const displayRole = userRole || "Owner";
+  const initials = displayName
+    .split(" ")
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
   return (
     <header className="sticky top-0 z-30 flex flex-col w-full border-b backdrop-blur-md bg-white/90 dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 shadow-sm">
       {/* Top Bar */}
@@ -107,14 +122,23 @@ export default function Header({
           {/* User Profile */}
           <div className="flex items-center space-x-3 border-l pl-4 border-slate-200 dark:border-slate-700">
             <div className="flex flex-col items-end hidden sm:flex">
-              <span className="text-sm font-semibold text-slate-800 dark:text-white">Tazkia Lamp S.</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-white">{displayName}</span>
               <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                Owner Role
+                {displayRole} Role
               </span>
             </div>
             <div className="w-10 h-10 rounded-full bg-emerald-700 text-emerald-50 font-black flex items-center justify-center border-2 border-emerald-500/30">
-              TL
+              {initials || "LX"}
             </div>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Keluar (Logout)"
+                className="p-2.5 text-slate-500 dark:text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400 rounded-xl transition-all cursor-pointer border border-slate-100 dark:border-slate-800"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>

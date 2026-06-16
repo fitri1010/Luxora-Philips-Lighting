@@ -10,15 +10,27 @@ import { InventoryItem } from "../types";
 interface InventoryManagerProps {
   inventoryItems: InventoryItem[];
   onAddStock: (sku: string, qty: number) => void;
+  onAddProduct?: (item: InventoryItem) => void;
+  canWrite?: boolean;
 }
 
 export default function InventoryManager({
   inventoryItems,
-  onAddStock
+  onAddStock,
+  onAddProduct,
+  canWrite = true
 }: InventoryManagerProps) {
   const [restockSku, setRestockSku] = useState("");
   const [restockQty, setRestockQty] = useState(10);
   const [successRestock, setSuccessRestock] = useState("");
+
+  // New product (Master SKU) form
+  const [npSku, setNpSku] = useState("");
+  const [npName, setNpName] = useState("");
+  const [npStock, setNpStock] = useState(0);
+  const [npMin] = useState(5);
+  const [npCost, setNpCost] = useState(0);
+  const [successProduct, setSuccessProduct] = useState("");
 
   const formatIDR = (val: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -38,6 +50,33 @@ export default function InventoryManager({
     setTimeout(() => {
       setSuccessRestock("");
     }, 3000);
+  };
+
+  const handleAddProductSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!npSku.trim() || !npName.trim() || !onAddProduct) return;
+    if (inventoryItems.some((i) => i.sku === npSku.trim())) {
+      setSuccessProduct(`SKU ${npSku} sudah ada.`);
+      setTimeout(() => setSuccessProduct(""), 3000);
+      return;
+    }
+    onAddProduct({
+      sku: npSku.trim(),
+      product_name: npName.trim(),
+      stock_beginning: npStock,
+      stock_in: 0,
+      stock_out: 0,
+      stock_return: 0,
+      stock_ending: npStock,
+      minimum_stock: npMin,
+      cost_price: npCost
+    });
+    setSuccessProduct(`Produk "${npName}" ditambahkan.`);
+    setNpSku("");
+    setNpName("");
+    setNpStock(0);
+    setNpCost(0);
+    setTimeout(() => setSuccessProduct(""), 3000);
   };
 
   // Automated classifiers
@@ -185,11 +224,52 @@ export default function InventoryManager({
       </div>
 
       {/* RESTOCK / PO INPUT SIMULATOR */}
+      {!canWrite ? (
+        <div className="mt-5 border-t dark:border-slate-750 pt-4 text-3xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/40 rounded-lg p-3">
+          Tampilan stok bersifat read-only untuk peran Anda. Pengadaan stok (Purchase Order) hanya dapat dilakukan oleh Owner atau Staff.
+        </div>
+      ) : (
+      <>
+      {/* TAMBAH PRODUK BARU (Master SKU) */}
+      <div className="mt-5 border-t dark:border-slate-750 pt-4">
+        <h3 className="text-2xs font-black tracking-widest text-slate-400 dark:text-slate-500 uppercase mb-3">
+          Tambah Produk Baru (Master SKU)
+        </h3>
+        {successProduct && (
+          <div className="mb-3.5 p-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 rounded-lg text-emerald-700 dark:text-emerald-400 text-3xs font-bold">
+            {successProduct}
+          </div>
+        )}
+        <form onSubmit={handleAddProductSubmit} className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-end">
+          <div>
+            <label className="block text-3xs font-black text-slate-400 uppercase mb-1">SKU</label>
+            <input value={npSku} onChange={(e) => setNpSku(e.target.value)} required placeholder="LMP-XXX" className="w-full text-3xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-2 border dark:border-slate-700 rounded-lg outline-none" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-3xs font-black text-slate-400 uppercase mb-1">Nama Produk</label>
+            <input value={npName} onChange={(e) => setNpName(e.target.value)} required placeholder="Nama lampu" className="w-full text-3xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-2 border dark:border-slate-700 rounded-lg outline-none" />
+          </div>
+          <div>
+            <label className="block text-3xs font-black text-slate-400 uppercase mb-1">Stok Awal</label>
+            <input type="number" min={0} value={npStock} onChange={(e) => setNpStock(Math.max(0, parseInt(e.target.value) || 0))} className="w-full text-3xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-2 border dark:border-slate-700 rounded-lg outline-none" />
+          </div>
+          <div>
+            <label className="block text-3xs font-black text-slate-400 uppercase mb-1">Modal/Unit</label>
+            <input type="number" min={0} value={npCost} onChange={(e) => setNpCost(Math.max(0, parseInt(e.target.value) || 0))} className="w-full text-3xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-2 border dark:border-slate-700 rounded-lg outline-none" />
+          </div>
+          <button type="submit" className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-3xs font-black uppercase rounded-lg flex items-center justify-center gap-1 cursor-pointer">
+            <PlusCircle className="w-4 h-4" /> Tambah
+          </button>
+        </form>
+        <p className="text-3xs text-slate-400 mt-1.5">Ambang stok minimum default 5 pcs (bisa diatur lewat restock berikutnya).</p>
+      </div>
+
+      {/* RESTOCK / PO INPUT SIMULATOR */}
       <div className="mt-5 border-t dark:border-slate-750 pt-4">
         <h3 className="text-2xs font-black tracking-widest text-slate-400 dark:text-slate-500 uppercase mb-3">
           Restock Supply Order (Amanah Purchase Order)
         </h3>
-        
+
         {successRestock && (
           <div className="mb-3.5 p-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 rounded-lg text-emerald-700 dark:text-emerald-400 text-3xs font-bold leading-normal">
             {successRestock}
@@ -238,6 +318,8 @@ export default function InventoryManager({
           </button>
         </form>
       </div>
+      </>
+      )}
 
     </div>
   );

@@ -7,7 +7,7 @@ import { MarketplaceOrder, POSTransaction, OperationalCost, InventoryItem, RiskI
 
 // Seed Data for Marketplace Orders (Shopee Marketplace)
 // Focusing on Decorative & Islamic Design Lamps
-export const initialMarketplaceOrders: MarketplaceOrder[] = [
+const baseOrders: MarketplaceOrder[] = [
   {
     order_id: "SPX-671239823-JKT",
     order_date: "2026-06-14T10:15:00-07:00",
@@ -225,6 +225,25 @@ export const initialMarketplaceOrders: MarketplaceOrder[] = [
     order_status: "Completed"
   }
 ];
+
+// Inject per-order Shopee fees for the Gharar/Zalim audit (PRD F-20/F-21, BR-COST-002/003).
+// Most orders are compliant; two are intentionally non-compliant to exercise the engine.
+export const initialMarketplaceOrders: MarketplaceOrder[] = baseOrders.map((o) => ({
+  ...o,
+  admin_fee: Math.round(o.net_sales * 0.0425),
+  service_fee: Math.round(o.net_sales * 0.02),
+  handling_fee: 2000,
+  shipping_paid_by_buyer: 20000,
+  shipping_forwarded_to_courier: 20000
+}));
+
+// GHARAR: biaya layanan (service fee) tidak tercatat/eksplisit pada satu pesanan
+const _ghararOrder = initialMarketplaceOrders.find((o) => o.order_id === "SPX-893401244-BDG");
+if (_ghararOrder) delete (_ghararOrder as Partial<MarketplaceOrder>).service_fee;
+
+// ZALIM: ongkir yang dibebankan ke pembeli melebihi yang diteruskan ke kurir (overcharge)
+const _zalimOrder = initialMarketplaceOrders.find((o) => o.order_id === "SPX-782390123-SBY");
+if (_zalimOrder) _zalimOrder.shipping_paid_by_buyer = 45000; // forwarded tetap 20000 → lebih 25000
 
 // Seed Data for POS Transactions (Point of Sales - Offline Store)
 export const initialPOSTransactions: POSTransaction[] = [

@@ -20,6 +20,13 @@ export interface MarketplaceOrder {
   discount: number;
   net_sales: number;
   order_status: "Completed" | "Returned" | "Cancelled" | "Delivered" | "Processing";
+  // Per-order fees for the Gharar/Zalim audit (PRD F-20/F-21, BR-COST-002/003).
+  // A missing admin_fee/service_fee = Gharar (biaya tidak eksplisit).
+  admin_fee?: number;
+  service_fee?: number;
+  handling_fee?: number;
+  shipping_paid_by_buyer?: number;       // ongkir dibayar pembeli
+  shipping_forwarded_to_courier?: number; // ongkir diteruskan ke kurir
 }
 
 export interface POSTransaction {
@@ -71,6 +78,9 @@ export interface RiskItem {
   lost_package: boolean;
   return_loss: number;
   date: string;
+  qty?: number;
+  // Return inspection lifecycle (BR-STK-003)
+  inspection_status?: "PENDING_INSPECTION" | "RESTOCKED" | "DAMAGED_WRITE_OFF";
 }
 
 export interface AnomalyLog {

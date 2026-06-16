@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local auth user store (server-side)
+.data/
+
+# Vercel
+.vercel

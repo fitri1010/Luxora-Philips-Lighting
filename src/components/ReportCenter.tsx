@@ -6,6 +6,9 @@
 import React, { useState } from "react";
 import { Sheet, FileSpreadsheet, Printer, RefreshCw, Calendar, FileText, CheckCircle2 } from "lucide-react";
 import { MarketplaceOrder, POSTransaction, InventoryItem, RiskItem, ZakatRecord } from "../types";
+import { useField } from "../data/DataStore";
+import { useAuth } from "../auth/AuthContext";
+import { exportWorkbook, exportReportPDF, computeZakat, ReportData, ReportType } from "../utils/reportExport";
 
 interface ReportCenterProps {
   orders: MarketplaceOrder[];
@@ -36,6 +39,12 @@ export default function ReportCenter({
 
   const [exportedMsg, setExportedMsg] = useState("");
 
+  // Real zakat inputs (shared with the Zakat module, per-user) — keeps figures consistent.
+  const { user } = useAuth();
+  const [zakatCash] = useField<number>("zakat.cash", Math.round(netProfit));
+  const [zakatLiabilities] = useField<number>("zakat.liabilities", 15000000);
+  const [goldPricePerGram] = useField<number>("zakat.goldPrice", 1470000);
+
   const formatIDR = (val: number) => {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
@@ -60,47 +69,31 @@ export default function ReportCenter({
   const currentMonthName = "Juni 2026 (Active Month)";
 
   const inventoryValue = inventoryItems.reduce((sum, item) => sum + (item.stock_ending * item.cost_price), 0);
-  const cashBalance = netProfit + 50000000;
 
-  // Trigger HTML table to CSV conversion & download
-  const handleCSVExport = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    const reportName = reportsList.find(r => r.value === activeReport)?.label || "KAS_Report";
+  // Single source of truth for export (XLSX + PDF) — uses the real per-user zakat inputs.
+  const buildReportData = (): ReportData => ({
+    orders, posHistory, inventoryItems, riskItems, zakatRecords,
+    netSales, grossProfit, netProfit, opexTotal, inventoryValue,
+    zakatCash, zakatLiabilities, goldPricePerGram,
+    shopName: user?.shopName || "LUXORA Lighting",
+    ownerName: user?.name || "-",
+    period: currentMonthName
+  });
 
-    // Build plain rows based on report selection
-    if (activeReport === "PL") {
-      csvContent += "Laporan Laba Rugi KAS - " + currentMonthName + "\n";
-      csvContent += "Item,Nilai\n";
-      csvContent += `Pendapatan Bersih (Net Sales), ${netSales}\n`;
-      csvContent += `Laba Kotor (Gross Profit), ${grossProfit}\n`;
-      csvContent += `Biaya Operasional (OPEX), ${opexTotal}\n`;
-      csvContent += `Laba Bersih (Net Profit), ${netProfit}\n`;
-    } else if (activeReport === "Inventory") {
-      csvContent += "SKU,Nama Barang,Beginning,Stok In,Stok Out,Stock Ending,Modal Satuan\n";
-      inventoryItems.forEach(i => {
-        csvContent += `${i.sku},"${i.product_name}",${i.stock_beginning},${i.stock_in},${i.stock_out},${i.stock_ending},${i.cost_price}\n`;
-      });
-    } else {
-      csvContent += `${reportName} - Eksportir KAS Accounting Systems\n`;
-      csvContent += "Generated Date, " + new Date().toISOString() + "\n";
-      csvContent += "Status, Audited Sharia Certifications Verified\n";
-    }
+  const zakatCalc = computeZakat(buildReportData());
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${reportName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setExportedMsg("Laporan berhasil dikonversi ke format XLSX-CSV Excel!");
+  // XLSX — full multi-sheet workbook (BR-RPT-003: no buyer PII)
+  const handleXLSXExport = () => {
+    exportWorkbook(buildReportData());
+    setExportedMsg("Workbook XLSX berhasil diunduh (multi-sheet, tanpa data pribadi pembeli).");
     setTimeout(() => setExportedMsg(""), 3500);
   };
 
-  // Standard Print Trigger
-  const handlePrint = () => {
-    window.print();
+  // PDF — printable document for the currently selected report
+  const handlePDFExport = () => {
+    exportReportPDF(activeReport as ReportType, buildReportData());
+    setExportedMsg(`Dokumen PDF "${reportsList.find(r => r.value === activeReport)?.label}" berhasil diunduh.`);
+    setTimeout(() => setExportedMsg(""), 3500);
   };
 
   return (
@@ -119,22 +112,22 @@ export default function ReportCenter({
           </div>
 
           <div className="flex flex-wrap gap-2.5">
-            {/* CSV export button */}
+            {/* XLSX workbook export (all sheets) */}
             <button
-              onClick={handleCSVExport}
+              onClick={handleXLSXExport}
               className="flex items-center space-x-1 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 text-3xs font-black uppercase rounded-lg border border-emerald-250 transition-all cursor-pointer"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Export CSV/XLSX</span>
+              <span>Unduh XLSX (Semua)</span>
             </button>
 
-            {/* Print button */}
+            {/* PDF document export (active report) */}
             <button
-              onClick={handlePrint}
+              onClick={handlePDFExport}
               className="flex items-center space-x-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-250 text-3xs font-black uppercase rounded-lg transition-all cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Cetak PDF (Print)</span>
+              <span>Unduh PDF (Laporan ini)</span>
             </button>
           </div>
         </div>
@@ -248,7 +241,7 @@ export default function ReportCenter({
                     </div>
                     <div className="flex justify-between font-black text-sm border-t dark:border-slate-750 pt-2 text-emerald-700">
                       <span>KAS AKHIR BULAN REKONSILIASI:</span>
-                      <span>{formatIDR(netProfit + 50000000)}</span>
+                      <span>{formatIDR(netProfit)}</span>
                     </div>
                   </div>
                 )}
@@ -358,21 +351,36 @@ export default function ReportCenter({
                 {activeReport === "Zakat" && (
                   <div className="space-y-2 text-2xs">
                     <div className="flex justify-between">
-                      <span>Kekayaan Harta Lancar KAS:</span>
-                      <span>{formatIDR(cashBalance + inventoryValue)}</span>
+                      <span>Kas / Saldo:</span>
+                      <span>{formatIDR(zakatCash)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Nilai Stok Barang:</span>
+                      <span>{formatIDR(inventoryValue)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Kewajiban Hutang Lancar:</span>
-                      <span className="text-rose-500">-IDR 15.000.000</span>
+                      <span className="text-rose-500">-{formatIDR(zakatLiabilities)}</span>
                     </div>
                     <div className="flex justify-between border-t border-dotted dark:border-slate-700 pt-2 font-extrabold">
-                      <span>Total Kekayaan Bersih Mulia (Mal):</span>
-                      <span>{formatIDR(cashBalance + inventoryValue - 15000000)}</span>
+                      <span>Harta Wajib Zakat (Mal):</span>
+                      <span>{formatIDR(zakatCalc.hwz)}</span>
                     </div>
-                    <div className="flex justify-between font-black text-emerald-600">
+                    <div className="flex justify-between">
+                      <span>Nishab (85 gr × {formatIDR(goldPricePerGram)}):</span>
+                      <span>{formatIDR(zakatCalc.nishab)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Status Nishab:</span>
+                      <span className={zakatCalc.reached ? "text-emerald-600 font-bold" : "text-rose-500 font-bold"}>
+                        {zakatCalc.reached ? "TERCAPAI" : "BELUM TERCAPAI"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-black text-emerald-600 border-t dark:border-slate-750 pt-2">
                       <span>Wajib Zakat Disetorkan (2.5%):</span>
-                      <span>{formatIDR(Math.max(0, (cashBalance + inventoryValue - 15000000) * 0.025))}</span>
+                      <span>{formatIDR(zakatCalc.due)}</span>
                     </div>
+                    <p className="text-[10px] text-slate-400 italic pt-1">Sinkron dengan modul Zakat (harga emas live & input per-user).</p>
                   </div>
                 )}
               </div>

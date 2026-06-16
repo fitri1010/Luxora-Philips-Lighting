@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Sparkles, RefreshCw, Star, AlertTriangle, ShieldCheck, ShoppingBag, ArrowUpRight, Scale } from "lucide-react";
+import { authFetch } from "../auth/AuthContext";
 
 interface AIInsightCenterProps {
   dataContext: any;
@@ -18,7 +19,7 @@ export default function AIInsightCenter({ dataContext }: AIInsightCenterProps) {
   const fetchInsights = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/insights", {
+      const response = await authFetch("/api/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataContext })

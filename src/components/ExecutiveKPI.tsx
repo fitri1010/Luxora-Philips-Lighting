@@ -23,9 +23,15 @@ interface KPIMetrics {
 
 interface ExecutiveKPIProps {
   metrics: KPIMetrics;
+  hideFinancials?: boolean;
 }
 
-export default function ExecutiveKPI({ metrics }: ExecutiveKPIProps) {
+// Cards that expose money / compliance figures — hidden from non-finance roles (Staff).
+const FINANCIAL_CARD_IDS = [
+  "kpi-revenue", "kpi-net-revenue", "kpi-gross-profit", "kpi-net-profit", "kpi-cash", "kpi-ads-roi", "kpi-sharia-score"
+];
+
+export default function ExecutiveKPI({ metrics, hideFinancials = false }: ExecutiveKPIProps) {
   // Format to IDR Currency Rupiah
   const formatIDR = (val: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -161,9 +167,13 @@ export default function ExecutiveKPI({ metrics }: ExecutiveKPIProps) {
     }
   ];
 
+  const visibleItems = hideFinancials
+    ? items.filter((item) => !FINANCIAL_CARD_IDS.includes(item.id))
+    : items;
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-11 gap-4">
-      {items.map((item) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      {visibleItems.map((item) => (
         <div
           id={item.id}
           key={item.id}

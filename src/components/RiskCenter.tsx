@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { AlertCircle, Trash2, Check, ShieldAlert, Sparkles, SlidersHorizontal, ArrowDownCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, Trash2, Check, ShieldAlert, Sparkles, SlidersHorizontal, ArrowDownCircle, RefreshCw, PackageCheck, PackageX } from "lucide-react";
 import { AnomalyLog, RiskItem } from "../types";
 
 interface RiskCenterProps {
@@ -12,13 +12,17 @@ interface RiskCenterProps {
   riskItems: RiskItem[];
   onResolveAnomaly: (id: string) => void;
   onDismissAnomaly: (id: string) => void;
+  onResolveReturn?: (riskId: string, decision: "restock" | "writeoff") => void;
+  canResolve?: boolean;
 }
 
 export default function RiskCenter({
   anomalyLogs,
   riskItems,
   onResolveAnomaly,
-  onDismissAnomaly
+  onDismissAnomaly,
+  onResolveReturn,
+  canResolve = false
 }: RiskCenterProps) {
   
   const formatIDR = (val: number) => {
@@ -114,24 +118,58 @@ export default function RiskCenter({
           {/* Logistics Return audit details list */}
           <div className="mt-5 border-t dark:border-slate-750 pt-4">
             <h3 className="text-2xs font-extrabold text-slate-400 dark:text-slate-500 tracking-wider uppercase mb-2">
-              Daftar Kasus Logistik Aktif (Shipper Audit Ledger)
+              Antrian Inspeksi &amp; Kasus Retur (BR-STK-003)
             </h3>
-            <div className="space-y-2 max-h-[110px] overflow-y-auto pr-1">
-              {riskItems.map((item) => (
-                <div key={item.id} className="text-3xs p-2.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border dark:border-slate-75 m-0 cursor-default flex items-center justify-between">
-                  <div className="flex flex-col space-y-1">
-                    <span className="font-extrabold text-slate-700 dark:text-slate-350">{item.product_name}</span>
-                    <span className="text-slate-400">Order ID: {item.order_id || "POS-STORE"} | SKU: {item.sku}</span>
-                    <span className="font-semibold text-rose-600 dark:text-rose-400 leading-tight">Sebab Retur: {item.return_reason || item.cancel_reason || "Tidak ada alasan tertulis"}</span>
+            <div className="space-y-2 max-h-[230px] overflow-y-auto pr-1">
+              {riskItems.length === 0 && (
+                <p className="text-3xs text-slate-400 italic py-2">Belum ada kasus retur.</p>
+              )}
+              {riskItems.map((item) => {
+                const pending = item.inspection_status === "PENDING_INSPECTION";
+                return (
+                  <div key={item.id} className="text-3xs p-2.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border dark:border-slate-75">
+                    <div className="flex items-start justify-between">
+                      <div className="flex flex-col space-y-1">
+                        <span className="font-extrabold text-slate-700 dark:text-slate-350">{item.product_name}</span>
+                        <span className="text-slate-400">Order: {item.order_id || "POS-STORE"} | SKU: {item.sku}{item.qty ? ` | ${item.qty} pcs` : ""}</span>
+                        <span className="font-semibold text-rose-600 dark:text-rose-400 leading-tight">{item.return_reason || item.cancel_reason || "Tidak ada alasan tertulis"}</span>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <span className="font-black text-rose-700 dark:text-rose-450 block">-{formatIDR(item.return_loss)}</span>
+                        {item.inspection_status === "RESTOCKED" && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300 font-bold uppercase whitespace-nowrap inline-block mt-1">Layak Jual</span>
+                        )}
+                        {item.inspection_status === "DAMAGED_WRITE_OFF" && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 border border-rose-300 font-bold uppercase whitespace-nowrap inline-block mt-1">Write-Off</span>
+                        )}
+                        {pending && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-300 font-bold uppercase whitespace-nowrap inline-block mt-1 animate-pulse">Perlu Inspeksi</span>
+                        )}
+                        {!item.inspection_status && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/20 text-rose-800 dark:text-rose-400 border border-rose-300 font-bold uppercase whitespace-nowrap inline-block mt-1">{item.return_status}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {pending && canResolve && onResolveReturn && (
+                      <div className="flex items-center gap-2 justify-end mt-2.5 border-t dark:border-slate-750/50 pt-2">
+                        <button
+                          onClick={() => onResolveReturn(item.id, "restock")}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-4xs font-black uppercase rounded flex items-center gap-1 cursor-pointer"
+                        >
+                          <PackageCheck className="w-3 h-3" /> Layak Jual (Restock)
+                        </button>
+                        <button
+                          onClick={() => onResolveReturn(item.id, "writeoff")}
+                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white text-4xs font-black uppercase rounded flex items-center gap-1 cursor-pointer"
+                        >
+                          <PackageX className="w-3 h-3" /> Tidak Layak (Write-Off)
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <span className="font-black text-rose-700 dark:text-rose-450 block">-{formatIDR(item.return_loss)}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/20 text-rose-800 dark:text-rose-400 border border-rose-300 font-bold uppercase whitespace-nowrap inline-block mt-1">
-                      {item.return_status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
