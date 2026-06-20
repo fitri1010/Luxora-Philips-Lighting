@@ -7,39 +7,47 @@
  */
 
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@google/genai";
-import { createClient as createSupabaseClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 dotenv.config();
 
-// ---- Lazy clients (read env at first use; works in dev + serverless) ----
-let _ai: GoogleGenAI | null | undefined;
-function getAi(): GoogleGenAI | null {
-  if (_ai !== undefined) return _ai;
+// Heavy SDKs (@google/genai, @supabase/supabase-js) are imported LAZILY (dynamic
+// import) so they never load at serverless cold-start. Loading them eagerly was
+// crashing every Vercel function (FUNCTION_INVOCATION_FAILED), even /api/health.
+
+// ---- Gemini client (only constructed when a key is present) ----
+async function getAiClient(): Promise<{ ai: any; Type: any } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
-  _ai =
-    apiKey && apiKey !== "MY_GEMINI_API_KEY"
-      ? new GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } })
-      : null;
-  return _ai;
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") return null;
+  const genai = await import("@google/genai");
+  return {
+    ai: new genai.GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } }),
+    Type: genai.Type
+  };
 }
 export function isAiEnabled(): boolean {
-  return getAi() !== null;
+  const k = process.env.GEMINI_API_KEY;
+  return !!(k && k !== "MY_GEMINI_API_KEY");
 }
 
-let _sb: SupabaseClient | null | undefined;
-function getSb(): SupabaseClient | null {
+// ---- Supabase client (lazy) ----
+let _sb: any | null | undefined;
+async function getSb(): Promise<any | null> {
   if (_sb !== undefined) return _sb;
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
   const key = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-  _sb = url && key ? createSupabaseClient(url, key) : null;
+  if (!url || !key) {
+    _sb = null;
+    return _sb;
+  }
+  const { createClient } = await import("@supabase/supabase-js");
+  _sb = createClient(url, key);
   return _sb;
 }
 
 /** Verify a Bearer token and return the Supabase user, or null. */
-export async function getUserFromAuthHeader(authHeader?: string): Promise<User | null> {
+export async function getUserFromAuthHeader(authHeader?: string): Promise<any | null> {
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const sb = getSb();
+  const sb = await getSb();
   if (!token || !sb) return null;
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data.user) return null;
@@ -94,8 +102,9 @@ export async function runCopilot(input: { prompt?: string; history?: any[]; data
   const { prompt, history, dataContext } = input;
   if (!prompt) return { status: 400, body: { error: "Prompt is required" } };
 
-  const ai = getAi();
-  if (!ai) return { status: 200, body: { text: generateExpertFallbackResponse(prompt, dataContext), fallback: true } };
+  const client = await getAiClient();
+  if (!client) return { status: 200, body: { text: generateExpertFallbackResponse(prompt, dataContext), fallback: true } };
+  const { ai } = client;
 
   try {
     const systemInstruction = `Anda adalah LUXORA AI, asisten kecerdasan bisnis (BI) berbasis AI dan konsultan Akuntansi Syariah.
@@ -126,8 +135,9 @@ Aturan: bahasa Indonesia santun & profesional, analisis tajam merujuk metrik di 
 
 export async function runPredict(input: { dataContext?: any }): Promise<ApiResult> {
   const { dataContext } = input;
-  const ai = getAi();
-  if (!ai) return { status: 200, body: { forecast: generateDeterministicForecast(dataContext), fallback: true } };
+  const client = await getAiClient();
+  if (!client) return { status: 200, body: { forecast: generateDeterministicForecast(dataContext), fallback: true } };
+  const { ai, Type } = client;
 
   try {
     const prompt = `Lakukan peramalan bisnis 7/30/90 hari ke depan dari data:
@@ -162,8 +172,9 @@ Output JSON sesuai schema.`;
 
 export async function runInsights(input: { dataContext?: any }): Promise<ApiResult> {
   const { dataContext } = input;
-  const ai = getAi();
-  if (!ai) return { status: 200, body: { insights: generateDeterministicInsights(dataContext), fallback: true } };
+  const client = await getAiClient();
+  if (!client) return { status: 200, body: { insights: generateDeterministicInsights(dataContext), fallback: true } };
+  const { ai, Type } = client;
 
   try {
     const prompt = `Buat audit dashboard otomatis (JSON) dari data retail:
